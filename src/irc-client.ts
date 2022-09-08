@@ -1,7 +1,8 @@
-import { filter, map, Observable } from 'rxjs';
+import { filter, lastValueFrom, map, Observable, scan, tap, takeUntil, concatMap, of, delay } from 'rxjs';
 import { IrcSocket } from './irc-socket';
 import { IrcSocketOptions } from './models/irc-socket-options.model';
 import { UserInfo } from './models/user-info.model';
+import { synchronize } from './utils/rx-operators';
 import { getUserInfo, isUser } from './utils/username-utils';
 
 export class IrcClient {
@@ -131,5 +132,28 @@ export class IrcClient {
 
   public write = async (receiver: string, message: string) => {
     await this.socket.sendAsync(`PRIVMSG ${receiver} :${message}`);
+  }
+
+  public getUsersList = async (...channels: string[]) => {
+    await this.socket.sendAsync(`NAMES ${channels.join(',')}`);
+
+    // Synchronize messages, to avoid race conditions.
+    const serverMessages$ = this.serverMessages$.pipe(synchronize);
+
+    const names$ = serverMessages$.pipe(
+      // Take next server messages until the RPL_ENDOFNAMES (366) command is received
+      takeUntil(
+        serverMessages$.pipe(
+          filter(({ command }) => command === '366')
+        )
+      ),
+      // Filter only RPL_NAMREPLY (353) messages
+      filter(({ command }) => command === '353'),
+      // Accumulate messages
+      scan((acc: string[], { message }) => [...acc, ...message.split(' ')], [])
+    );
+
+    const names = await lastValueFrom(names$);
+    return names;
   }
 }

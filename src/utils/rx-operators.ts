@@ -1,5 +1,5 @@
 import { Socket } from 'net';
-import { from, fromEvent, mergeMap, Observable, OperatorFunction } from 'rxjs';
+import { concatMap, delay, from, fromEvent, mergeMap, Observable, of, OperatorFunction } from 'rxjs';
 import { EventEmitter } from 'stream';
 
 export const expandAs = <T>(
@@ -20,4 +20,10 @@ export const fromSocketEvent = <T, TSocket extends EventEmitter = Socket>(
   eventName: string
 ): Observable<T> => {
   return fromEvent(socket, eventName) as Observable<T>;
+}
+
+export const synchronize = <T>(source: Observable<T>) => {
+  return source.pipe(
+    concatMap(x => of(x).pipe(delay(0)))
+  );
 }
